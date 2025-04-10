@@ -3,5 +3,5 @@
   "TimestampMax": 15,
   "DurationSeconds": 5,
   "ServerPort": 5000,
-  "ExpectedClients": 2
+  "ExpectedClients": 1
 }

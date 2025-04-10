@@ -1,6 +1,7 @@
 ﻿using System.Net.Sockets;
 using System.Net;
 using System.Text;
+using System.Linq;
 
 namespace SonB
 {
@@ -8,6 +9,8 @@ namespace SonB
     {
         private readonly Config _config;
         private readonly List<TcpClient> _clients = new();
+        private readonly List<TcpClient> _disconnectedClients = new();
+        private readonly List<Guid> _clientIds = new();
         private readonly List<string> _messages = new();
         private readonly object _lock = new();
         private bool _running = true;
@@ -28,6 +31,7 @@ namespace SonB
             while (_running && !cts.Token.IsCancellationRequested)
             {
                 _clients.Clear();
+                _disconnectedClients.Clear();
                 _sendInvalidDataForClient = new bool[_config.ExpectedClients];
                 _toggleIndex = 0;
 
@@ -45,83 +49,20 @@ namespace SonB
                 Console.WriteLine("[Serwer] Wszyscy klienci połączeni.");
 
                 // Pierwsza konfiguracja
-                await SendConfigurationToAll();
+                await SendConfigurationToAll(true);
 
                 while (_running && !cts.Token.IsCancellationRequested)
                 {
                     _messages.Clear();
-                    var disconnectedClients = new List<TcpClient>();
 
                     for (int i = 0; i < _clients.Count; i++)
                     {
-                        var client = _clients[i];
-                        try
-                        {
-                            var stream = client.GetStream();
-
-                            if (!client.Connected || !stream.CanRead)
-                            {
-                                disconnectedClients.Add(client);
-                                continue;
-                            }
-
-                            byte[] buffer = new byte[1024];
-                            int bytesRead = await stream.ReadAsync(buffer);
-
-                            if (bytesRead == 0)
-                            {
-                                disconnectedClients.Add(client);
-                                continue;
-                            }
-
-                            string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                            Console.WriteLine($"[Serwer] Otrzymano od klienta {i}: {message}");
-
-                            if (message == "INVALID_CONFIGURATION")
-                            {
-                                Console.WriteLine($"[Serwer] Klient {i} zgłasza niepoprawną konfigurację. Ponawiam wysyłkę...");
-
-                                int retryCount = 0;
-                                while (_running && retryCount < 5)
-                                {
-                                    await SendConfigurationToClient(i);
-                                    retryCount++;
-                                    Console.WriteLine($"[Serwer] Próba ponownej wysyłki konfiguracji ({retryCount}/5) do klienta {i}...");
-                                    await Task.Delay(1000);
-                                }
-
-                                if (retryCount >= 5)
-                                {
-                                    Console.WriteLine($"[Serwer] Przekroczono limit prób dla klienta {i}. Oczekiwanie na dalsze dane...");
-                                }
-
-                                continue; // nie dodawaj do przetwarzania
-                            }
-
-                            lock (_lock)
-                            {
-                                var parts = message.Split('|');
-                                if (parts.Length == 2 &&
-                                    double.TryParse(parts[0], out double _) &&
-                                    int.TryParse(parts[1], out int _))
-                                {
-                                    _messages.Add(message);
-                                }
-                                else
-                                {
-                                    Console.WriteLine($"[Serwer] Odrzucono niepoprawną wiadomość od klienta {i}.");
-                                }
-                            }
-                        }
-                        catch
-                        {
-                            disconnectedClients.Add(client);
-                        }
+                        await ReceiveData(i);
                     }
 
                     ProcessResults();
 
-                    foreach (var dc in disconnectedClients)
+                    foreach (var dc in _disconnectedClients)
                     {
                         Console.WriteLine("[Serwer] Klient rozłączony.");
                         _clients.Remove(dc);
@@ -150,14 +91,85 @@ namespace SonB
             }
         }
 
-        private async Task SendConfigurationToClient(int i)
+        private async Task ReceiveData(int i)
+        {
+            var client = _clients[i];
+            try
+            {
+                var stream = client.GetStream();
+
+                if (!client.Connected || !stream.CanRead)
+                {
+                    _disconnectedClients.Add(client);
+                    return;
+                }
+
+                byte[] buffer = new byte[1024];
+                int bytesRead = await stream.ReadAsync(buffer);
+
+                if (bytesRead == 0)
+                {
+                    _disconnectedClients.Add(client);
+                    return;
+                }
+
+                string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                Console.WriteLine($"[Serwer] Otrzymano od klienta {i}: {message}");
+
+                if (message == "INVALID_CONFIGURATION")
+                {
+                    await RetrySendConfigurationToClient(i);
+                    return;
+                }
+
+                lock (_lock)
+                {
+                    var parts = message.Split('|');
+                    if (parts.Length == 3 &&
+                        double.TryParse(parts[0], out double _) &&
+                        int.TryParse(parts[1], out int _) &&
+                        Guid.TryParse(parts[2], out Guid parsedGuid) &&
+                        _clientIds.Contains(parsedGuid))
+                    {
+                        _messages.Add(message);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[Serwer] Odrzucono niepoprawną wiadomość od klienta {i}.");
+                    }
+                }
+            }
+            catch
+            {
+                _disconnectedClients.Add(client);
+            }
+        }
+        private async Task RetrySendConfigurationToClient(int i)
+        {
+            Console.WriteLine($"[Serwer] Klient {i} zgłasza niepoprawną konfigurację. Ponawiam wysyłkę...");
+
+            int retryCount = 0;
+            while (_running && retryCount < 5)
+            {
+                await SendConfigurationToClient(i);
+                retryCount++;
+                Console.WriteLine($"[Serwer] Próba ponownej wysyłki konfiguracji ({retryCount}/5) do klienta {i}...");
+                await Task.Delay(1000);
+            }
+
+            if (retryCount >= 5)
+            {
+                Console.WriteLine($"[Serwer] Przekroczono limit prób dla klienta {i}. Oczekiwanie na dalsze dane...");
+            }
+        }
+        private async Task SendConfigurationToClient(int i, bool isFirst = false)
         {
             if (i >= _clients.Count) return;
 
             var client = _clients[i];
             var stream = client.GetStream();
             string message;
-            if (!_sendInvalidDataForClient[i])
+            if (_sendInvalidDataForClient[i])
             {
 
                 message = "INVALID_CONFIGURATION_MESSAGE";
@@ -168,16 +180,22 @@ namespace SonB
                 double min = rand.NextDouble() * (_config.TimestampMax - _config.TimestampMin) + _config.TimestampMin;
                 double max = rand.NextDouble() * (_config.TimestampMax - min) + min;
                 message = $"{min}|{max}";
+                if (isFirst)
+                {
+                    var id = Guid.NewGuid();
+                    _clientIds.Add(id);
+                    message += $"|{id}";
+                }
             }
             byte[] data = Encoding.UTF8.GetBytes(message);
             await stream.WriteAsync(data, 0, data.Length);
         }
 
-        private async Task SendConfigurationToAll()
+        private async Task SendConfigurationToAll(bool isFirst = false)
         {
             for (int i = 0; i < _clients.Count; i++)
             {
-                await SendConfigurationToClient(i);
+                await SendConfigurationToClient(i, isFirst);
             }
         }
 

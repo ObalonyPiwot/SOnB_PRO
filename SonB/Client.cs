@@ -33,14 +33,13 @@ namespace SonB
                     await client.ConnectAsync(_serverAddress, _config.ServerPort);
                     Console.WriteLine("[Client] Połączono z serwerem.");
 
-                    await ReceiveData(client);
                     Random rand = new Random();
 
                     while (!cts.Token.IsCancellationRequested)
                     {
-                        await SendData(client, rand);
-
                         await ReceiveData(client);
+
+                        await SendData(client, rand);
 
                         await Task.Delay(1000);
                     }

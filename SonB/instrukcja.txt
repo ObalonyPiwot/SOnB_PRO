@@ -1,0 +1,6 @@
+[Client] Wciœniêto klawisz 1 - Zatrzymywanie klienta.
+[Client] Wciœniêto klawisz 2 - Wysy³anie popraynych/niepoprawnych danych
+
+[Serwer] Wciœniêto klawisz 1 – zatrzymywanie serwera.
+[Serwer] Wciœniêto klawisz 2 - Klient kolejny bêdzie teraz otrzymywa³ niepoprawne dane.
+[Serwer] Wciœniêto klawisz 3 - Reset: wszyscy klienci bêd¹ otrzymywaæ poprawne dane.
