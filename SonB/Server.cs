@@ -38,6 +38,7 @@ namespace SonB
                 TcpListener listener = new TcpListener(IPAddress.Any, _config.ServerPort);
                 listener.Start();
                 Console.WriteLine($"[Serwer] Oczekiwanie na {_config.ExpectedClients} klientów...");
+                ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId} ({_clients}/{_config.ExpectedClients})");
 
                 while (_clients.Count < _config.ExpectedClients)
                 {
