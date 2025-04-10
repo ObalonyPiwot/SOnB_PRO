@@ -34,13 +34,14 @@ namespace SonB
                 TcpListener listener = new TcpListener(IPAddress.Any, _config.ServerPort);
                 listener.Start();
                 Console.WriteLine($"[Serwer] Oczekiwanie na {_config.ExpectedClients} klientów...");
-                ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId} ({_clients}/{_config.ExpectedClients})");
+                ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId} ({_clients.Count()}/{_config.ExpectedClients})");
 
                 while (_clients.Count < _config.ExpectedClients)
                 {
                     var client = await listener.AcceptTcpClientAsync();
                     _clients.Add(client);
                     Console.WriteLine($"[Serwer] Klient {_clients.Count}/{_config.ExpectedClients} połączony.");
+                    ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId} ({_clients.Count()}/{_config.ExpectedClients})");
                 }
 
                 Console.WriteLine("[Serwer] Wszyscy klienci połączeni.");
