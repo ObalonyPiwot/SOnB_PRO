@@ -32,7 +32,7 @@ namespace SonB
                     using var client = new TcpClient();
                     await client.ConnectAsync(_serverAddress, _config.ServerPort);
                     Console.WriteLine("[Client] Połączono z serwerem.");
-
+                    ConsoleNamer.SetTitle($"CLIENT {Environment.ProcessId}");
                     await ReceiveData(client);
                     Random rand = new Random();
 
