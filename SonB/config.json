@@ -1,7 +1,9 @@
 {
-  "TimestampMin": 1,
-  "TimestampMax": 15,
-  "DurationSeconds": 5,
-  "ServerPort": 5000,
-  "ExpectedClients": 1
+    "TimestampMin": 1,
+    "TimestampMax": 15,
+    "DurationSeconds": 5,
+    "ServerPort": 5000,
+    "ExpectedClients": 1,
+    "AwaitForClients": 5000,
+    "AutomatedClientWeight": true
 }

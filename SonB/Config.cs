@@ -9,6 +9,8 @@ namespace SonB
         public int DurationSeconds { get; set; }
         public int ServerPort { get; set; }
         public int ExpectedClients { get; set; }
+        public int AwaitForClients { get; set; }
+        public bool AutomatedClientWeight { get; set; } = true;
 
         public static Config Load(string path)
         {

@@ -28,9 +28,18 @@ namespace SonB
                     Console.WriteLine("[SYSTEM] Uruchamiam jako KLIENT");
                     ConsoleNamer.SetTitle($"CLIENT {Environment.ProcessId}");
                     string serverAddress = "localhost";
-                    Console.Write("Podaj wagę klienta: ");
-                    int weight = int.Parse(Console.ReadLine());
-
+                    int weight = 1; //default;
+                    if(config.AutomatedClientWeight == true)
+                    {
+                        Random random = new Random();
+                        weight = random.Next(1, 4);
+                        Console.WriteLine("[CLIENT] Ustawiano wagę: "+weight);
+                    }
+                    else
+                    {
+                        Console.WriteLine("[CLIENT] Podaj wagę klienta: ");
+                        weight = int.Parse(Console.ReadLine());
+                    }
                     var client = new Client(config, serverAddress, weight);
                     await client.StartAsync();
                 }

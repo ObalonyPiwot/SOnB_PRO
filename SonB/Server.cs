@@ -59,7 +59,14 @@ namespace SonB
 
                     for (int i = 0; i < _clients.Count; i++)
                     {
-                        await ReceiveData(i);
+                        try
+                        {
+                            await ReceiveData(i).WaitAsync(TimeSpan.FromMilliseconds(_config.AwaitForClients));
+                        }
+                        catch (TimeoutException)
+                        {
+                            Console.WriteLine($"[Serwer] Klient {i} nie odpowiedział w czasie {_config.AwaitForClients} ms.");
+                        }
                     }
 
                     ProcessResults();
