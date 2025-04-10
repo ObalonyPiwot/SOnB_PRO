@@ -1,0 +1,7 @@
+{
+  "TimestampMin": 1,
+  "TimestampMax": 15,
+  "DurationSeconds": 5,
+  "ServerPort": 5000,
+  "ExpectedClients": 2
+}
