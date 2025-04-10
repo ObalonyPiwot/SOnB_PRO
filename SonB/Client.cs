@@ -10,6 +10,7 @@ namespace SonB
         private double _timestampMax;
         private string _serverAddress;
         private int _weight;
+        private Guid _clientId;
         private bool _sendInvalidData = false;
         private bool _validConfiguration = false;
 
@@ -33,9 +34,7 @@ namespace SonB
                     await client.ConnectAsync(_serverAddress, _config.ServerPort);
                     Console.WriteLine("[Client] Połączono z serwerem.");
                     ConsoleNamer.SetTitle($"CLIENT {Environment.ProcessId}");
-                    await ReceiveData(client);
                     Random rand = new Random();
-
                     while (!cts.Token.IsCancellationRequested)
                     {
                         await ReceiveData(client);
@@ -57,13 +56,12 @@ namespace SonB
         {
             var stream = client.GetStream();
 
-            // Odbieranie danych TimestampMin i TimestampMax od serwera
             byte[] buffer = new byte[1024];
             int bytesRead = await stream.ReadAsync(buffer);
             string configData = Encoding.UTF8.GetString(buffer, 0, bytesRead);
             string[] parts = configData.Split('|');
 
-            if (parts.Length != 2 ||
+            if (parts.Length < 2 || parts.Length > 3 ||
                 !double.TryParse(parts[0], out double timestampMin) ||
                 !double.TryParse(parts[1], out double timestampMax))
             {
@@ -71,9 +69,26 @@ namespace SonB
                 _validConfiguration = false;
                 return;
             }
+
+            // Jeśli jest trzeci element – musi być poprawnym GUID-em
+            Guid id = Guid.Empty;
+            if (parts.Length == 3)
+            {
+                if (!Guid.TryParse(parts[2], out id))
+                {
+                    Console.WriteLine("[Client] Niepoprawny GUID w konfiguracji.");
+                    _validConfiguration = false;
+                    return;
+                }
+
+                Console.WriteLine($"[Client] Otrzymano id: {id}");
+                _clientId = id;
+            }
+
             Console.WriteLine($"[Client] Otrzymano zakres: {timestampMin} - {timestampMax}");
-            _timestampMax = timestampMax;
+
             _timestampMin = timestampMin;
+            _timestampMax = timestampMax;
             _validConfiguration = true;
         }
         private async Task SendData(TcpClient client, Random rand)
@@ -87,7 +102,7 @@ namespace SonB
             else 
             {
                 double timestamp = rand.NextDouble() * (_timestampMax - _timestampMin) + _timestampMin;
-                message = _sendInvalidData ? "INVALID_DATA" : $"{timestamp}|{_weight}";
+                message = _sendInvalidData ? "INVALID_DATA" : $"{timestamp}|{_weight}|{_clientId}";
             }
             byte[] data = Encoding.UTF8.GetBytes(message);
             await stream.WriteAsync(data);

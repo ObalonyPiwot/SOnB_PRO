@@ -17,6 +17,9 @@ namespace SonB
         private bool[] _sendInvalidDataForClient;
         private int _toggleIndex = 0;
 
+        private TcpListener _listener;
+        private CancellationTokenSource _listenerCts;
+
         public Server(Config config)
         {
             _config = config;
@@ -28,29 +31,28 @@ namespace SonB
             var cts = new CancellationTokenSource();
             _ = Task.Run(() => MonitorCommands(cts));
 
+            _clients.Clear();
+            _disconnectedClients.Clear();
+            _sendInvalidDataForClient = new bool[_config.ExpectedClients];
+            _toggleIndex = 0;
+
+            _listener = new TcpListener(IPAddress.Any, _config.ServerPort);
+            _listenerCts = new CancellationTokenSource();
+            _listener.Start();
+            Console.WriteLine($"[Serwer] Nasłuchiwanie na porcie {_config.ServerPort} rozpoczęte.");
+            ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId} ({_clients.Count}/{_config.ExpectedClients})");
+
+            _ = Task.Run(() => AcceptClientsLoop(_listenerCts.Token));
+
             while (_running && !cts.Token.IsCancellationRequested)
             {
-                _clients.Clear();
-                _disconnectedClients.Clear();
-                _sendInvalidDataForClient = new bool[_config.ExpectedClients];
-                _toggleIndex = 0;
-
-                TcpListener listener = new TcpListener(IPAddress.Any, _config.ServerPort);
-                listener.Start();
-                Console.WriteLine($"[Serwer] Oczekiwanie na {_config.ExpectedClients} klientów...");
-                ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId} ({_clients.Count()}/{_config.ExpectedClients})");
-
-                while (_clients.Count < _config.ExpectedClients)
+                if (_clients.Count < _config.ExpectedClients)
                 {
-                    var client = await listener.AcceptTcpClientAsync();
-                    _clients.Add(client);
-                    Console.WriteLine($"[Serwer] Klient {_clients.Count}/{_config.ExpectedClients} połączony.");
-                    ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId} ({_clients.Count()}/{_config.ExpectedClients})");
+                    await Task.Delay(500);
+                    continue;
                 }
 
                 Console.WriteLine("[Serwer] Wszyscy klienci połączeni.");
-
-                // Pierwsza konfiguracja
                 await SendConfigurationToAll(true);
 
                 while (_running && !cts.Token.IsCancellationRequested)
@@ -70,6 +72,7 @@ namespace SonB
                         _clients.Remove(dc);
                         dc.Close();
                     }
+                    _disconnectedClients.Clear();
 
                     await SendConfigurationToAll();
 
@@ -82,14 +85,50 @@ namespace SonB
 
                 foreach (var client in _clients)
                 {
-                    var stream = client.GetStream();
-                    byte[] msg = Encoding.UTF8.GetBytes("RESTART");
-                    await stream.WriteAsync(msg);
-                    client.Close();
+                    try
+                    {
+                        var stream = client.GetStream();
+                        byte[] msg = Encoding.UTF8.GetBytes("RESTART");
+                        await stream.WriteAsync(msg);
+                        client.Close();
+                    }
+                    catch { }
                 }
 
-                listener.Stop();
-                Console.WriteLine("[Serwer] Zatrzymano listener. Oczekiwanie na restart lub zakończenie.");
+                _listenerCts.Cancel();
+                _listener.Stop();
+                Console.WriteLine("[Serwer] Zatrzymano nasłuchiwanie. Oczekiwanie na restart lub zakończenie.");
+            }
+        }
+
+        private async Task AcceptClientsLoop(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    var client = await _listener.AcceptTcpClientAsync();
+
+                    lock (_lock)
+                    {
+                        if (_clients.Count < _config.ExpectedClients)
+                        {
+                            _clients.Add(client);
+                            Console.WriteLine($"[Serwer] Klient połączony ({_clients.Count}/{_config.ExpectedClients})");
+                            ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId} ({_clients.Count}/{_config.ExpectedClients})");
+                        }
+                        else
+                        {
+                            Console.WriteLine("[Serwer] Maksymalna liczba klientów osiągnięta. Odrzucam połączenie.");
+                            client.Close();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!token.IsCancellationRequested)
+                        Console.WriteLine($"[Serwer] Błąd podczas akceptowania klienta: {ex.Message}");
+                }
             }
         }
 
@@ -146,6 +185,7 @@ namespace SonB
                 _disconnectedClients.Add(client);
             }
         }
+
         private async Task RetrySendConfigurationToClient(int i)
         {
             Console.WriteLine($"[Serwer] Klient {i} zgłasza niepoprawną konfigurację. Ponawiam wysyłkę...");
@@ -164,6 +204,7 @@ namespace SonB
                 Console.WriteLine($"[Serwer] Przekroczono limit prób dla klienta {i}. Oczekiwanie na dalsze dane...");
             }
         }
+
         private async Task SendConfigurationToClient(int i, bool isFirst = false)
         {
             if (i >= _clients.Count) return;
@@ -171,9 +212,9 @@ namespace SonB
             var client = _clients[i];
             var stream = client.GetStream();
             string message;
+
             if (_sendInvalidDataForClient[i])
             {
-
                 message = "INVALID_CONFIGURATION_MESSAGE";
             }
             else
@@ -189,6 +230,7 @@ namespace SonB
                     message += $"|{id}";
                 }
             }
+            Console.WriteLine($"[Serwer] Wysyłanie {message}.");
             byte[] data = Encoding.UTF8.GetBytes(message);
             await stream.WriteAsync(data, 0, data.Length);
         }
@@ -209,7 +251,7 @@ namespace SonB
                 foreach (var msg in _messages)
                 {
                     var parts = msg.Split('|');
-                    if (parts.Length == 2 &&
+                    if (parts.Length == 3 &&
                         double.TryParse(parts[0], out double ts) &&
                         int.TryParse(parts[1], out int weight))
                     {
