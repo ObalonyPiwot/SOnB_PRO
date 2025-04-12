@@ -20,38 +20,53 @@ namespace SonB
             _serverAddress = serverAddress;
             _weight = weight;
         }
-
         public async Task StartAsync()
         {
+            var retryCount = 0;
             while (true)
             {
                 try
                 {
+                    ConsoleNamer.SetTitle($"CLIENT {Environment.ProcessId}");
                     var cts = new CancellationTokenSource();
                     _ = Task.Run(() => MonitorCommands(cts));
 
                     using var client = new TcpClient();
+
                     await client.ConnectAsync(_serverAddress, _config.ServerPort);
+                    await ReceiveData(client);
                     Console.WriteLine("[Client] Połączono z serwerem.");
-                    ConsoleNamer.SetTitle($"CLIENT {Environment.ProcessId}");
                     Random rand = new Random();
+
                     while (!cts.Token.IsCancellationRequested)
                     {
-                        await ReceiveData(client);
-
                         await SendData(client, rand);
-
+                        await ReceiveData(client);
                         await Task.Delay(1000);
+                        retryCount = 0;
                     }
                 }
                 catch
                 {
+                    if (retryCount >= 2)
+                    {
+                        await TryBecomeServer();
+                        return;
+                    }
+                    retryCount++;
                     Console.WriteLine("[Client] Błąd połączenia. Próba ponownego połączenia za 5 sek...");
                     await Task.Delay(5000);
                 }
             }
         }
+        private async Task TryBecomeServer()
+        {
+            Console.WriteLine("[Client] Przekształcam się w serwer...");
+            ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId}");
 
+            var server = new Server(_config);
+            await server.StartAsync();
+        }
         private async Task ReceiveData(TcpClient client)
         {
             var stream = client.GetStream();

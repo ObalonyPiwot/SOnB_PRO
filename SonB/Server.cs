@@ -10,6 +10,7 @@ namespace SonB
         private readonly Config _config;
         private readonly List<TcpClient> _clients = new();
         private readonly List<TcpClient> _disconnectedClients = new();
+        private readonly Dictionary<Guid, int> _clientConfigRetryCount = new();
         private readonly List<Guid> _clientIds = new();
         private readonly List<string> _messages = new();
         private readonly object _lock = new();
@@ -38,11 +39,17 @@ namespace SonB
 
             _listener = new TcpListener(IPAddress.Any, _config.ServerPort);
             _listenerCts = new CancellationTokenSource();
+            _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             _listener.Start();
             Console.WriteLine($"[Serwer] Nasłuchiwanie na porcie {_config.ServerPort} rozpoczęte.");
             ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId} ({_clients.Count}/{_config.ExpectedClients})");
 
-            _ = Task.Run(() => AcceptClientsLoop(_listenerCts.Token));
+            while (_clients.Count < _config.ExpectedClients)
+            {
+                var client = await _listener.AcceptTcpClientAsync();
+                _clients.Add(client);
+                Console.WriteLine($"[Serwer] Klient {_clients.Count}/{_config.ExpectedClients} połączony.");
+            }
 
             while (_running && !cts.Token.IsCancellationRequested)
             {
@@ -61,7 +68,14 @@ namespace SonB
 
                     for (int i = 0; i < _clients.Count; i++)
                     {
-                        await ReceiveData(i);
+                        try
+                        {
+                            await ReceiveData(i).WaitAsync(TimeSpan.FromMilliseconds(_config.AwaitForClients));
+                        }
+                        catch (TimeoutException)
+                        {
+                            Console.WriteLine($"[Serwer] Klient {i} nie odpowiedział w czasie {_config.AwaitForClients} ms.");
+                        }
                     }
 
                     ProcessResults();
@@ -101,37 +115,6 @@ namespace SonB
             }
         }
 
-        private async Task AcceptClientsLoop(CancellationToken token)
-        {
-            while (!token.IsCancellationRequested)
-            {
-                try
-                {
-                    var client = await _listener.AcceptTcpClientAsync();
-
-                    lock (_lock)
-                    {
-                        if (_clients.Count < _config.ExpectedClients)
-                        {
-                            _clients.Add(client);
-                            Console.WriteLine($"[Serwer] Klient połączony ({_clients.Count}/{_config.ExpectedClients})");
-                            ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId} ({_clients.Count}/{_config.ExpectedClients})");
-                        }
-                        else
-                        {
-                            Console.WriteLine("[Serwer] Maksymalna liczba klientów osiągnięta. Odrzucam połączenie.");
-                            client.Close();
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (!token.IsCancellationRequested)
-                        Console.WriteLine($"[Serwer] Błąd podczas akceptowania klienta: {ex.Message}");
-                }
-            }
-        }
-
         private async Task ReceiveData(int i)
         {
             var client = _clients[i];
@@ -157,11 +140,11 @@ namespace SonB
                 string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
                 Console.WriteLine($"[Serwer] Otrzymano od klienta {i}: {message}");
 
-                if (message == "INVALID_CONFIGURATION")
+               /* if (message == "INVALID_CONFIGURATION")
                 {
                     await RetrySendConfigurationToClient(i);
                     return;
-                }
+                }*/
 
                 lock (_lock)
                 {
@@ -188,21 +171,16 @@ namespace SonB
 
         private async Task RetrySendConfigurationToClient(int i)
         {
-            Console.WriteLine($"[Serwer] Klient {i} zgłasza niepoprawną konfigurację. Ponawiam wysyłkę...");
-
-            int retryCount = 0;
-            while (_running && retryCount < 5)
-            {
-                await SendConfigurationToClient(i);
-                retryCount++;
-                Console.WriteLine($"[Serwer] Próba ponownej wysyłki konfiguracji ({retryCount}/5) do klienta {i}...");
-                await Task.Delay(1000);
-            }
-
+            /*Console.WriteLine($"[Serwer] Klient {i} zgłasza niepoprawną konfigurację. Ponawiam wysyłkę...");
             if (retryCount >= 5)
             {
                 Console.WriteLine($"[Serwer] Przekroczono limit prób dla klienta {i}. Oczekiwanie na dalsze dane...");
-            }
+                return;
+            }*/
+            await SendConfigurationToClient(i);
+            /*Console.WriteLine($"[Serwer] Próba ponownej wysyłki konfiguracji ({retryCount}/5) do klienta {i}...");
+            await Task.Delay(1000);*/
+
         }
 
         private async Task SendConfigurationToClient(int i, bool isFirst = false)
@@ -216,6 +194,7 @@ namespace SonB
             if (_sendInvalidDataForClient[i])
             {
                 message = "INVALID_CONFIGURATION_MESSAGE";
+                //_sendInvalidDataForClient[i] = false;
             }
             else
             {
