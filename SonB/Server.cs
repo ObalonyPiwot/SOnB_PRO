@@ -30,6 +30,8 @@ namespace SonB
         public async Task StartAsync()
         {
             var cts = new CancellationTokenSource();
+            MetricsServer.Start();
+
             _ = Task.Run(() => MonitorCommands(cts));
 
             _clients.Clear();
@@ -48,6 +50,7 @@ namespace SonB
             {
                 var client = await _listener.AcceptTcpClientAsync();
                 _clients.Add(client);
+                MetricsServer.SetConnectedClients(_clients.Count);
                 Console.WriteLine($"[Serwer] Klient {_clients.Count}/{_config.ExpectedClients} połączony.");
             }
 
@@ -85,6 +88,7 @@ namespace SonB
                         Console.WriteLine("[Serwer] Klient rozłączony.");
                         _clients.Remove(dc);
                         dc.Close();
+                        MetricsServer.IncrementDisconnected();
                     }
                     _disconnectedClients.Clear();
 
@@ -96,7 +100,7 @@ namespace SonB
                         break;
                     }
                 }
-
+                MetricsServer.SetConnectedClients(_clients.Count);
                 foreach (var client in _clients)
                 {
                     try
@@ -252,6 +256,9 @@ namespace SonB
 
             double median = timestamps[timestamps.Count / 2];
             Console.WriteLine($"[Serwer] Mediana timestampów: {median:F2} sek.");
+            MetricsServer.ObserveMedian(median);
+            MetricsServer.SetMedain(median);
+
         }
 
         private void MonitorCommands(CancellationTokenSource cts)

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.InteropServices;
+using Prometheus;
 
 namespace SonB
 {
@@ -21,6 +22,8 @@ namespace SonB
                     Console.WriteLine("[SYSTEM] Uruchamiam jako SERWER");
                     ConsoleNamer.SetTitle($"SERVER {Environment.ProcessId}");
                     var server = new Server(config);
+                    var metricServer = new MetricServer(port: 9000);
+                    metricServer.Start();
                     await server.StartAsync();
                 }
                 else

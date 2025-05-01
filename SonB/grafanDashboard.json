@@ -1,0 +1,37 @@
+{
+    "dashboard": {
+        "id": null,
+        "uid": null,
+        "title": "SonB Metrics",
+        "timezone": "browser",
+        "panels": [
+            {
+                "type": "graph",
+                "title": "Wiadomo�ci wys�ane",
+                "targets": [
+                    {
+                        "expr": "sonb_messages_sent_total",
+                        "legendFormat": "Wys�ane",
+                        "refId": "A"
+                    }
+                ],
+                "id": 1
+            },
+            {
+                "type": "graph",
+                "title": "B��dy danych (je�li s�)",
+                "targets": [
+                    {
+                        "expr": "sonb_invalid_messages_total",
+                        "legendFormat": "Niepoprawne dane",
+                        "refId": "B"
+                    }
+                ],
+                "id": 2
+            }
+        ],
+        "schemaVersion": 36,
+        "version": 1,
+        "refresh": "1s"
+    }
+}
