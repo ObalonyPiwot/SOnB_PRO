@@ -8,11 +8,11 @@ Jak uruchomić:
 - zainstaluj dotnet-runtime-7.0.20
 - zainstaluj prometheus (używaliśmy 3.3.0.windows-amd64)
 - zaktualizuj plik prometheus.yml o :
-    _    - job_name: "sonb-server"
+    - job_name: "sonb-server"
         static_configs:
           - targets: ["localhost:9100"]
             labels:
-              app: "sonb"_
+              app: "sonb"
     w sekcji _scrape_configs:_
 - uruchom komendę prometheus.exe --config.file=prometheus.yml
 - zainstaluj grafanę
