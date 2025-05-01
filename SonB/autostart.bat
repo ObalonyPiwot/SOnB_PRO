@@ -1,7 +1,7 @@
 @echo off
 cd /d %~dp0
 
-set /p CLIENT_COUNT=Client count: 
+for /f "tokens=*" %%a in ('powershell -command "(Get-Content config.json | ConvertFrom-Json).ExpectedClients"') do set CLIENT_COUNT=%%a
 
 echo.
 start "SERVER" cmd /k dotnet run -- server
